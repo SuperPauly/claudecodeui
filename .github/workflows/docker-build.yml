@@ -40,19 +40,59 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Compute image and safe tags
         id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Image (registry + owner/repo)
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+
+          # Short SHA (7 chars)
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+
+          # Determine ref name (branch or tag)
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            REF_NAME="${GITHUB_REF#refs/heads/}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            REF_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            REF_NAME=""
+          fi
+
+          # Sanitize ref name: replace invalid chars with '-' and trim leading/trailing '-'
+          REF_SANITIZED="$(echo "${REF_NAME}" | sed -E 's/[^a-zA-Z0-9._-]+/-/g' | sed -E 's/^-+//; s/-+$//')"
+
+          # Build preferred tag:
+          # - If we have a sanitized ref (branch or tag) use ref-sha
+          # - Else use short-sha
+          # - Else fallback to 'latest'
+          if [[ -n "${REF_SANITIZED}" ]]; then
+            TAG="${REF_SANITIZED}-${SHORT_SHA}"
+          elif [[ -n "${SHORT_SHA}" ]]; then
+            TAG="${SHORT_SHA}"
+          else
+            TAG="latest"
+          fi
+
+          # Ensure tag does not start with a hyphen (invalid)
+          if [[ "${TAG}" == -* ]]; then
+            TAG="g${TAG}"
+          fi
+
+          # Compose tags to push: always include IMAGE:TAG.
+          # Also include IMAGE:latest when building for main/master or for tag events.
+          PUSH_TAGS="${IMAGE}:${TAG}"
+          if [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master || "${GITHUB_REF}" == refs/tags/* ]]; then
+            PUSH_TAGS="${PUSH_TAGS},${IMAGE}:latest"
+          fi
+
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "tags=${PUSH_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "Computed image: ${IMAGE}:${TAG}"
+          echo "Computed push tags: ${PUSH_TAGS}"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -61,7 +101,9 @@ jobs:
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            org.opencontainers.image.created=${{ github.run_started_at }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
@@ -75,9 +117,9 @@ jobs:
             -e CLINE_API_KEY=sk-test-key \
             test-image
           sleep 10
-          docker logs test-container
-          docker stop test-container
-          docker rm test-container
+          docker logs test-container || true
+          docker stop test-container || true
+          docker rm test-container || true
 
       - name: Generate deployment summary
         if: github.event_name != 'pull_request'
