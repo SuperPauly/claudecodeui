@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  claudecodeui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claudecodeui:latest
+    container_name: claudecodeui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # Claude Code UI Web Interface
+      - "3001:3001"  # MCP TaskMaster AI API (optional)
+    environment:
+      # Required environment variables
+      - CLINE_API_KEY=${CLINE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      
+      # Optional Cline CLI configuration
+      - CLINE_MODEL=${CLINE_MODEL:-gpt-4}
+      
+      # Application configuration
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      
+      # Feature flags
+      - MCP_TASKMASTER_ENABLED=${MCP_TASKMASTER_ENABLED:-true}
+      - TASKMASTER_API_KEY=${TASKMASTER_API_KEY:-}
+      - ENABLE_FILE_UPLOAD=${ENABLE_FILE_UPLOAD:-true}
+      - ENABLE_GIT_INTEGRATION=${ENABLE_GIT_INTEGRATION:-true}
+      - ENABLE_TERMINAL=${ENABLE_TERMINAL:-true}
+      
+      # Resource limits
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-52428800}
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600000}
+      
+      # Claude CLI configuration (optional)
+      - CLAUDE_CLI_PATH=${CLAUDE_CLI_PATH:-claude}
+    volumes:
+      # Persistent storage for Cline CLI project sessions
+      - cline-projects:/home/appuser/.cline/projects
+      
+      # Application data and database
+      - app-data:/data
+      
+      # MCP configuration and state
+      - mcp-config:/home/appuser/.mcp
+      
+      # Logs (optional - for debugging)
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - claudecodeui-network
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+volumes:
+  cline-projects:
+    driver: local
+  app-data:
+    driver: local
+  mcp-config:
+    driver: local
+
+networks:
+  claudecodeui-network:
+    driver: bridge
