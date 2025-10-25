@@ -16,6 +16,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # FIX: Ensure IMAGE_NAME is lowercase for GHCR compatibility
   IMAGE_NAME: ${{ toLower(github.repository) }}
 
 jobs:
@@ -144,16 +145,16 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment Options" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker Compose: See `docker-compose.yml`" >> $GITHUB_STEP_SUMMARY
-          echo "- Coolify: Use `coolify-config.json`" >> $GITHUB_STEP_SUMMARY
-          echo "- See `DOCKER_SETUP.md` for detailed instructions" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker Compose: See \`docker-compose.yml\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Coolify: Use \`coolify-config.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- See \`DOCKER_SETUP.md\` for detailed instructions" >> $GITHUB_STEP_SUMMARY
 
   security-scan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
