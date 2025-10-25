@@ -16,7 +16,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Keep IMAGE_NAME if you want to display it elsewhere; we defensively lowercase at runtime below
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -25,7 +24,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,8 +46,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the runner-provided GITHUB_REPOSITORY and force lowercase to guarantee valid docker/OCI repo name
-          # GITHUB_REPOSITORY is formatted as "owner/repo"
+          # Force-lowercase the repository "owner/repo" provided by the runner:
           REPO_LOWER="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
 
           # Image (registry + owner/repo) — forced lowercase
@@ -69,10 +67,7 @@ jobs:
           # Sanitize ref name: replace invalid chars with '-' and trim leading/trailing '-'
           REF_SANITIZED="$(echo "${REF_NAME}" | sed -E 's/[^a-zA-Z0-9._-]+/-/g' | sed -E 's/^-+//; s/-+$//')"
 
-          # Build preferred tag:
-          # - If we have a sanitized ref (branch or tag) use ref-sha
-          # - Else use short-sha
-          # - Else fallback to 'latest'
+          # Build preferred tag
           if [[ -n "${REF_SANITIZED}" ]]; then
             TAG="${REF_SANITIZED}-${SHORT_SHA}"
           elif [[ -n "${SHORT_SHA}" ]]; then
@@ -81,24 +76,24 @@ jobs:
             TAG="latest"
           fi
 
-          # Ensure tag does not start with a hyphen (invalid)
+          # Ensure tag does not start with a hyphen
           if [[ "${TAG}" == -* ]]; then
             TAG="g${TAG}"
           fi
 
-          # Compose tags to push: always include IMAGE:TAG.
-          # Also include IMAGE:latest when building for main/master or for tag events.
+          # Compose push tags
           PUSH_TAGS="${IMAGE}:${TAG}"
           if [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master || "${GITHUB_REF}" == refs/tags/* ]]; then
             PUSH_TAGS="${PUSH_TAGS},${IMAGE}:latest"
           fi
 
-          # Defensive: ensure full tag string is lowercase (just in case)
+          # Defensive: lowercase the entire tag string before exposing it to the build action
           PUSH_TAGS_LOWER="$(echo "${PUSH_TAGS}" | tr '[:upper:]' '[:lower:]')"
 
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "tags=${PUSH_TAGS_LOWER}" >> "$GITHUB_OUTPUT"
+
           echo "Computed image: ${IMAGE}:${TAG}"
           echo "Computed push tags: ${PUSH_TAGS_LOWER}"
 
@@ -141,27 +136,13 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "docker run -d -p 3000:3000 \\" >> $GITHUB_STEP_SUMMARY
-          echo "  -e CLINE_API_KEY=your-key \\" >> $GITHUB_STEP_SUMMARY
-          echo "  -e JWT_SECRET=your-secret \\" >> $GITHUB_STEP_SUMMARY
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Options" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker Compose: See \`docker-compose.yml\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Coolify: Use \`coolify-config.json\`" >> $GITHUB_STEP_SUMMARY
-          echo "- See \`DOCKER_SETUP.md\` for detailed instructions" >> $GITHUB_STEP_SUMMARY
 
   security-scan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
