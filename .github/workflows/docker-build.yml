@@ -16,8 +16,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Ensure IMAGE_NAME is lowercase for GHCR / Docker validity
-  IMAGE_NAME: ${{ toLower(github.repository) }}
+  # Keep IMAGE_NAME if you want to display it elsewhere; we defensively lowercase at runtime below
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,8 +47,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Image (registry + owner/repo) — force lowercase to be safe
-          IMAGE="${REGISTRY}/$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          # Use the runner-provided GITHUB_REPOSITORY and force lowercase to guarantee valid docker/OCI repo name
+          # GITHUB_REPOSITORY is formatted as "owner/repo"
+          REPO_LOWER="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+
+          # Image (registry + owner/repo) — forced lowercase
+          IMAGE="${REGISTRY}/${REPO_LOWER}"
 
           # Short SHA (7 chars)
           SHORT_SHA="${GITHUB_SHA:0:7}"
@@ -66,6 +70,9 @@ jobs:
           REF_SANITIZED="$(echo "${REF_NAME}" | sed -E 's/[^a-zA-Z0-9._-]+/-/g' | sed -E 's/^-+//; s/-+$//')"
 
           # Build preferred tag:
+          # - If we have a sanitized ref (branch or tag) use ref-sha
+          # - Else use short-sha
+          # - Else fallback to 'latest'
           if [[ -n "${REF_SANITIZED}" ]]; then
             TAG="${REF_SANITIZED}-${SHORT_SHA}"
           elif [[ -n "${SHORT_SHA}" ]]; then
@@ -79,17 +86,21 @@ jobs:
             TAG="g${TAG}"
           fi
 
-          # Compose tags to push
+          # Compose tags to push: always include IMAGE:TAG.
+          # Also include IMAGE:latest when building for main/master or for tag events.
           PUSH_TAGS="${IMAGE}:${TAG}"
           if [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master || "${GITHUB_REF}" == refs/tags/* ]]; then
             PUSH_TAGS="${PUSH_TAGS},${IMAGE}:latest"
           fi
 
+          # Defensive: ensure full tag string is lowercase (just in case)
+          PUSH_TAGS_LOWER="$(echo "${PUSH_TAGS}" | tr '[:upper:]' '[:lower:]')"
+
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "tags=${PUSH_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "tags=${PUSH_TAGS_LOWER}" >> "$GITHUB_OUTPUT"
           echo "Computed image: ${IMAGE}:${TAG}"
-          echo "Computed push tags: ${PUSH_TAGS}"
+          echo "Computed push tags: ${PUSH_TAGS_LOWER}"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -150,7 +161,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
