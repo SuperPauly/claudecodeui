@@ -1,17 +1,35 @@
 # Multi-stage build for production deployment with Cline CLI and MCP TaskMaster AI
 # Stage 1: Build the frontend
-FROM node:20-alpine AS frontend-builder
-
+# Example builder stage (adjust base image/tag to match your Dockerfile)
+FROM node:20-bullseye AS frontend-builder
 WORKDIR /app
 
-# Copy package files
+# Install system build deps required for node-gyp and sqlite native modules
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    build-essential \
+    make \
+    g++ \
+    libsqlite3-dev \
+    pkg-config \
+  && ln -sf /usr/bin/python3 /usr/bin/python \
+  && rm -rf /var/lib/apt/lists/*
+
+# Ensure node-gyp uses python3
+ENV PYTHON=/usr/bin/python3
+ENV npm_config_python=/usr/bin/python3
+
+# Copy package files first to leverage Docker layer cache
 COPY package*.json ./
 
-# Install all dependencies (including dev dependencies needed for build)
-RUN npm install
+# If you have package-lock.json, prefer 'npm ci' for reproducible installs
+# --unsafe-perm ensures node-gyp can run when npm runs as root inside container
+RUN npm ci --unsafe-perm --prefer-offline --no-audit --fund=false
 
-# Copy source code
+# Copy the rest of the source and continue build steps
 COPY . .
+
+# (Continue with build steps: build, compile, etc.)
 
 # Build the frontend with Vite
 RUN npm run build
@@ -63,9 +81,9 @@ USER appuser
 # Expose ports
 EXPOSE 3000 3001
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))" || exit 1
+#  Health check
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#    CMD node -e "require('http').get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))" || exit 1
 
 # Set environment variables
 ENV NODE_ENV=production \
