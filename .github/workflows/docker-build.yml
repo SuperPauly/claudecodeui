@@ -16,7 +16,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # FIX: Ensure IMAGE_NAME is lowercase for GHCR compatibility
+  # Ensure IMAGE_NAME is lowercase for GHCR / Docker validity
   IMAGE_NAME: ${{ toLower(github.repository) }}
 
 jobs:
