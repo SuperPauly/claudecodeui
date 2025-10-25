@@ -1,4 +1,4 @@
-# Multi-stage build for production deployment
+# Multi-stage build for production deployment with Cline CLI and MCP TaskMaster AI
 # Stage 1: Build the frontend
 FROM node:20-alpine AS frontend-builder
 
@@ -7,29 +7,19 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install all dependencies (including dev dependencies needed for build)
+RUN npm install
 
 # Copy source code
 COPY . .
 
-# Build the frontend
+# Build the frontend with Vite
 RUN npm run build
 
 # Stage 2: Production image
 FROM node:20-alpine
 
-# Install necessary system dependencies
-RUN apk add --no-cache \
-    git \
-    bash \
-    curl \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/cache/apk/*
-
-# Create non-root user
+# Create non-root user for security
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser
 
@@ -39,8 +29,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Copy all node_modules from builder stage
+# Note: In production environments with proper SSL certificates, 
+# you can install fresh dependencies with: RUN npm install --omit=dev
+# For now, we copy from builder to avoid npm issues
+COPY --from=frontend-builder /app/node_modules ./node_modules
 
 # Copy built frontend from builder stage
 COPY --from=frontend-builder /app/dist ./dist
@@ -60,6 +53,10 @@ RUN mkdir -p /home/appuser/.cline/projects \
     /app/logs && \
     chown -R appuser:appuser /home/appuser /app /data
 
+# Clean up to reduce image size
+RUN npm cache clean --force && \
+    rm -rf /tmp/*
+
 # Switch to non-root user
 USER appuser
 
@@ -68,14 +65,14 @@ EXPOSE 3000 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+    CMD node -e "require('http').get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))" || exit 1
 
-# Set environment
+# Set environment variables
 ENV NODE_ENV=production \
     PORT=3000 \
     CLINE_MODEL=gpt-4 \
     LOG_LEVEL=info
 
-# Use entrypoint script
+# Use entrypoint script for initialization
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["npm", "run", "server"]
