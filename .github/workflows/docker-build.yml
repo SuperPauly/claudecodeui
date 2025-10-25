@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,9 +66,6 @@ jobs:
           REF_SANITIZED="$(echo "${REF_NAME}" | sed -E 's/[^a-zA-Z0-9._-]+/-/g' | sed -E 's/^-+//; s/-+$//')"
 
           # Build preferred tag:
-          # - If we have a sanitized ref (branch or tag) use ref-sha
-          # - Else use short-sha
-          # - Else fallback to 'latest'
           if [[ -n "${REF_SANITIZED}" ]]; then
             TAG="${REF_SANITIZED}-${SHORT_SHA}"
           elif [[ -n "${SHORT_SHA}" ]]; then
@@ -82,8 +79,7 @@ jobs:
             TAG="g${TAG}"
           fi
 
-          # Compose tags to push: always include IMAGE:TAG.
-          # Also include IMAGE:latest when building for main/master or for tag events.
+          # Compose tags to push
           PUSH_TAGS="${IMAGE}:${TAG}"
           if [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master || "${GITHUB_REF}" == refs/tags/* ]]; then
             PUSH_TAGS="${PUSH_TAGS},${IMAGE}:latest"
@@ -154,7 +150,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
