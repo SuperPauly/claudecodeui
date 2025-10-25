@@ -47,8 +47,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Image (registry + owner/repo)
-          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+          # Image (registry + owner/repo) — force lowercase to be safe
+          IMAGE="${REGISTRY}/$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
 
           # Short SHA (7 chars)
           SHORT_SHA="${GITHUB_SHA:0:7}"
